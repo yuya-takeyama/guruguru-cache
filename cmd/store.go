@@ -6,6 +6,7 @@ import (
 	"compress/gzip"
 	"crypto/md5"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -50,7 +51,7 @@ func init() {
 			}
 
 			paths := args[1:]
-			dir, err := ioutil.TempDir("tmp", cacheKey)
+			dir, err := ioutil.TempDir("", cacheKey)
 			if err != nil {
 				log.Fatalf("failed to create temporal directory: %s", err)
 			}
@@ -111,7 +112,18 @@ func createTar(dir string, key string, paths []string) error {
 
 	defer tw.Close()
 
+	metadataPath := filepath.Join(dir, "metadata.json")
+	metadataFile, err := os.Create(metadataPath)
+	if err != nil {
+		return fmt.Errorf("failed to create metadata file: %s", err)
+	}
+
+	defer metadataFile.Close()
+
+	meta := new(metadata)
+
 	for i, path := range paths {
+		meta.Paths = append(meta.Paths, path)
 		childDir := fmt.Sprintf("%04d", i)
 		dirwalk("", path, func(baseDir string, fileinfo os.FileInfo) error {
 			targetFilePath := filepath.Join(baseDir, fileinfo.Name())
@@ -150,6 +162,29 @@ func createTar(dir string, key string, paths []string) error {
 	}
 	if err := tw.Flush(); err != nil {
 		return fmt.Errorf("failed to flush tar file: %s", err)
+	}
+
+	metadataJSON, err := json.Marshal(meta)
+	if err != nil {
+		return fmt.Errorf("failed to encode metadata JSON: %s", err)
+	}
+
+	_, err = metadataFile.Write(metadataJSON)
+	if err != nil {
+		return fmt.Errorf("failed to write metadata: %s", err)
+	}
+
+	tarHeader := &tar.Header{
+		Name: "metadata.json",
+		Mode: 0600,
+		Size: int64(len(metadataJSON)),
+	}
+	if err := tw.WriteHeader(tarHeader); err != nil {
+		return fmt.Errorf("failed to write tar header: %s", err)
+	}
+
+	if _, err := tw.Write(metadataJSON); err != nil {
+		return fmt.Errorf("failed to add metadata.json to tar: %s", err)
 	}
 
 	return nil
