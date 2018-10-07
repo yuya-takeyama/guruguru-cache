@@ -154,8 +154,6 @@ func extractCache(dir string, item *s3.GetObjectOutput) {
 		log.Fatalf("failed to save cache file: %s", err)
 	}
 
-	fmt.Println(dir)
-
 	file.Seek(0, 0)
 
 	gzr, err := gzip.NewReader(file)
@@ -185,11 +183,11 @@ func extractCache(dir string, item *s3.GetObjectOutput) {
 			log.Fatalf("failed to create a file: %s", err)
 		}
 
-		defer f.Close()
-
 		if _, err := io.Copy(f, tr); err != nil {
 			log.Fatalf("failed to write to a file: %s", err)
 		}
+
+		f.Close()
 	}
 }
 
@@ -214,7 +212,13 @@ func moveToOriginalPaths(dir string) {
 		}
 
 		from := filepath.Join(dir, fmt.Sprintf("%04d", i), filepath.Base(path))
-		os.Rename(from, path)
+		pathBaseDir := filepath.Dir(path)
+		if err := os.MkdirAll(pathBaseDir, 0755); err != nil {
+			log.Fatalf("failed to create a directory: %s", err)
+		}
+		if err := os.Rename(from, path); err != nil {
+			log.Fatalf("failed to move file: %s", err)
+		}
 	}
 
 	log.Println("finished")

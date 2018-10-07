@@ -41,7 +41,7 @@ func init() {
 			}
 
 			if exists {
-				fmt.Printf("cache already exists: %s\n", cacheKey)
+				log.Printf("cache already exists: %s\n", cacheKey)
 				return
 			}
 
@@ -53,14 +53,13 @@ func init() {
 
 			defer os.RemoveAll(dir)
 
-			fmt.Printf("Creating a cache: %s...\n", cacheKey)
+			log.Printf("Creating a cache: %s\n", cacheKey)
 			if err := createTar(dir, cacheKey, paths); err != nil {
 				log.Fatal(err)
 			}
 			if err := compressGzip(dir, cacheKey); err != nil {
 				log.Fatal(err)
 			}
-			fmt.Println("Uploading a cache...")
 			if err := uploadToS3(dir, cacheKey); err != nil {
 				log.Fatal(err)
 			}
@@ -103,6 +102,7 @@ func createTar(dir string, key string, paths []string) error {
 
 	defer tarFile.Close()
 
+	log.Println("Creating a tar file")
 	tw := tar.NewWriter(tarFile)
 
 	defer tw.Close()
@@ -132,12 +132,7 @@ func createTar(dir string, key string, paths []string) error {
 				return fmt.Errorf("failed to get stat: %s", statErr)
 			}
 
-			var childPath string
-			if filepath.IsAbs(path) {
-				childPath = filepath.Join(fmt.Sprintf("%04d", i), strings.Replace(targetFilePath, filepath.Dir(path), "", 1))
-			} else {
-				childPath = filepath.Join(childDir, targetFilePath)
-			}
+			childPath := filepath.Join(childDir, strings.Replace(targetFilePath, filepath.Dir(path), "", 1))
 
 			tarHeader := &tar.Header{
 				Name: childPath,
@@ -189,6 +184,7 @@ func compressGzip(dir string, key string) error {
 	tarPath := filepath.Join(dir, key+".tar")
 	gzPath := filepath.Join(dir, key+".tar.gz")
 
+	log.Println("Compressing to a gzip file")
 	gzFile, gzCreateErr := os.Create(gzPath)
 	if gzCreateErr != nil {
 		return fmt.Errorf("failed to create gz file: %s", gzCreateErr)
@@ -248,9 +244,11 @@ func uploadToS3(dir string, key string) error {
 		ContentLength: &size,
 		ContentMD5:    &base64Md5,
 	}
+	log.Println("Uploading to S3")
 	if _, err := s3Client.PutObject(input); err != nil {
 		return fmt.Errorf("failed to upload to S3: %s", err)
 	}
+	log.Println("Uploaded successfully")
 
 	return nil
 }
