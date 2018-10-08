@@ -33,6 +33,15 @@ In a basic case, you need to set these variables:
 * `AWS_SECRET_ACCESS_KEY`
 * `AWS_REGION`
 
+### Installation
+
+Currently, there are no binary releases. So you need to build by yourself or copying from a Docker image is useful.
+
+```dockerfile
+# In Dockerfile
+COPY --from=yuyat/guruguru-cache /usr/local/bin/guruguru-cache /usr/local/bin
+```
+
 ### Store cache
 
 ```
