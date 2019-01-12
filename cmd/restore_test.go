@@ -71,3 +71,32 @@ func TestExtractCache(t *testing.T) {
 		}
 	}
 }
+
+func TestMoveToOriginalPathWith(t *testing.T) {
+	setupFixturesToCache(t)
+
+	dir, err := ioutil.TempDir("", "test")
+	if err != nil {
+		log.Fatalf("failed to create temporal directory: %s", err)
+	}
+
+	defer os.RemoveAll(dir)
+
+	paths := []string{"tmp/foo", "tmp/abc/def"}
+	if err := createTar(dir, "test", paths); err != nil {
+		t.Fatalf("failed to create a tar: %s", err)
+	}
+	if err := compressGzip(dir, "test"); err != nil {
+		t.Fatalf("failed to compress to gzip file: %s", err)
+	} else {
+		clearFixturesToCache(t)
+
+		if file, err := os.Open(filepath.Join(dir, "test.tar.gz")); err != nil {
+			t.Fatalf("failed to open the gzip file: %s", err)
+		} else {
+			extractCache(dir, file)
+			moveToOriginalPaths(dir)
+			assertFixtures(t)
+		}
+	}
+}
