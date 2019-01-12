@@ -3,6 +3,7 @@ package cmd
 import (
 	"archive/tar"
 	"bytes"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
@@ -128,7 +129,7 @@ func loadTarHeadersAndContents(t *testing.T, f string) map[string]*TarHeaderAndC
 	return hdrs
 }
 
-func TestCreateTar(t *testing.T) {
+func TestCreateTarWithRelativePaths(t *testing.T) {
 	setupFixturesToCache(t)
 
 	dir, err := ioutil.TempDir("", "test")
@@ -151,6 +152,50 @@ func TestCreateTar(t *testing.T) {
 	}
 
 	if hdrs["metadata.json"].Content != `{"paths":["tmp/foo","tmp/abc/def"]}` {
+		t.Fatalf("the content of metadata.json is wrong: %s", hdrs["metadata.json"].Content)
+	}
+	if hdrs["0000/foo/hoge.txt"].Content != "This is foo!" {
+		t.Fatalf("the content of 0000/foo/hoge.txt is wrong: %s", hdrs["0000/tmp/foo/hoge.txt"].Content)
+	}
+	if hdrs["0000/foo/bar/baz/link"].Header.Linkname != "../../hoge.txt" {
+		t.Fatalf("the target of the link 0000/tmp/foo/bar/baz/link is wrong: %s", hdrs["0000/tmp/foo/bar/baz/link"].Header.Linkname)
+	}
+	if hdrs["0001/def/ghe"].Header.Typeflag&tar.TypeDir != tar.TypeDir {
+		t.Fatalf("the directory 0001/abc/def/ghe is not a directory")
+	}
+}
+
+func TestCreateTarWithAbsolutePaths(t *testing.T) {
+	setupFixturesToCache(t)
+
+	dir, err := ioutil.TempDir("", "test")
+	if err != nil {
+		log.Fatalf("failed to create temporal directory: %s", err)
+	}
+
+	defer os.RemoveAll(dir)
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get the current working directory: %s", err)
+	}
+
+	foodir := filepath.Join(cwd, "tmp/foo")
+	defdir := filepath.Join(cwd, "tmp/abc/def")
+	paths := []string{foodir, defdir}
+	if err := createTar(dir, "test", paths); err != nil {
+		t.Fatalf("failed to create a tar: %s", err)
+	}
+
+	hdrs := loadTarHeadersAndContents(t, filepath.Join(dir, "test.tar"))
+
+	n := len(hdrs)
+	if n != 8 {
+		t.Fatalf("the number of the entries is wrong: %d", n)
+	}
+
+	expectedMetadata := fmt.Sprintf(`{"paths":["%s","%s"]}`, foodir, defdir)
+	if hdrs["metadata.json"].Content != expectedMetadata {
 		t.Fatalf("the content of metadata.json is wrong: %s", hdrs["metadata.json"].Content)
 	}
 	if hdrs["0000/foo/hoge.txt"].Content != "This is foo!" {
