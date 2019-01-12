@@ -85,6 +85,9 @@ var restoreCmd = &cobra.Command{
 		}
 
 		file := saveCacheFileFromS3Item(dir, item)
+
+		defer file.Close()
+
 		extractCache(dir, file)
 		moveToOriginalPaths(dir)
 	},
@@ -148,8 +151,6 @@ func saveCacheFileFromS3Item(dir string, item *s3.GetObjectOutput) *os.File {
 	if err != nil {
 		log.Fatalf("failed to create cache file: %s", err)
 	}
-
-	defer file.Close()
 
 	if _, err := io.Copy(file, item.Body); err != nil {
 		log.Fatalf("failed to save cache file: %s", err)
