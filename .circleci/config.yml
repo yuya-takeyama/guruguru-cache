@@ -1,0 +1,25 @@
+version: 2
+
+jobs:
+  test:
+    working_directory: /go/src/github.com/yuya-takeyama/guruguru-cache
+    docker:
+    - image: circleci/golang:1.11
+    steps:
+    - checkout
+    - run:
+        name: Install dependencies
+        command: go get -u -v golang.org/x/lint/golint
+    - run:
+        name: Lint
+        command: golint
+    - run:
+        name: Test
+        command: go test -race ./...
+
+workflows:
+  version: 2
+
+  test:
+    jobs:
+      - test
