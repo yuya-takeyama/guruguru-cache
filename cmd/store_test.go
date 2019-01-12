@@ -208,3 +208,26 @@ func TestCreateTarWithAbsolutePaths(t *testing.T) {
 		t.Fatalf("the directory 0001/abc/def/ghe is not a directory")
 	}
 }
+
+func TestCompressGzip(t *testing.T) {
+	setupFixturesToCache(t)
+
+	dir, err := ioutil.TempDir("", "test")
+	if err != nil {
+		log.Fatalf("failed to create temporal directory: %s", err)
+	}
+
+	defer os.RemoveAll(dir)
+
+	paths := []string{"tmp/foo", "tmp/abc/def"}
+	if err := createTar(dir, "test", paths); err != nil {
+		t.Fatalf("failed to create a tar: %s", err)
+	}
+	if err := compressGzip(dir, "test"); err != nil {
+		t.Fatalf("failed to compress to gzip file: %s", err)
+	}
+
+	if _, err := os.Open(filepath.Join(dir, "test.tar.gz")); err != nil {
+		t.Fatalf("failed to open the created gzip file: %s", err)
+	}
+}
