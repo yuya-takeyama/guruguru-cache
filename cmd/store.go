@@ -12,7 +12,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -120,38 +119,52 @@ func createTar(dir string, key string, paths []string) error {
 	for i, path := range paths {
 		meta.Paths = append(meta.Paths, path)
 		childDir := fmt.Sprintf("%04d", i)
-		dirwalk("", path, func(baseDir string, fileinfo os.FileInfo) error {
-			targetFilePath := filepath.Join(baseDir, fileinfo.Name())
-			file, fileErr := os.Open(targetFilePath)
-			if fileErr != nil {
-				return fmt.Errorf("failed to open: %s", fileErr)
+		walkErr := filepath.Walk(path, func(elempath string, info os.FileInfo, err error) error {
+			if err != nil {
+				return fmt.Errorf("failed to traverse files: %s", err)
 			}
 
-			stat, statErr := file.Stat()
-			if statErr != nil {
-				return fmt.Errorf("failed to get stat: %s", statErr)
+			var link string
+			if info.Mode()&os.ModeSymlink == os.ModeSymlink {
+				if link, err = os.Readlink(elempath); err != nil {
+					return fmt.Errorf("failed to read link: %s", err)
+				}
 			}
 
-			childPath := filepath.Join(childDir, strings.Replace(targetFilePath, filepath.Dir(path), "", 1))
-
-			tarHeader := &tar.Header{
-				Name: childPath,
-				Mode: int64(stat.Mode()),
-				Size: stat.Size(),
+			tarHeader, thErr := tar.FileInfoHeader(info, link)
+			if err != nil {
+				return fmt.Errorf("failed to create tar Header: %s", thErr)
 			}
+
+			tarHeader.Name = filepath.Join(childDir, elempath)
+
 			if err := tw.WriteHeader(tarHeader); err != nil {
 				return fmt.Errorf("failed to write tar header: %s", err)
+			}
+
+			if !info.Mode().IsRegular() {
+				return nil
+			}
+
+			file, fileErr := os.Open(elempath)
+			if fileErr != nil {
+				return fmt.Errorf("failed to open: %s", fileErr)
 			}
 
 			if _, err := io.Copy(tw, file); err != nil {
 				return fmt.Errorf("failed to write file: %s", err)
 			}
 
+			if err := tw.Flush(); err != nil {
+				return fmt.Errorf("failed to flush tar file: %s", err)
+			}
+
 			return nil
 		})
-	}
-	if err := tw.Flush(); err != nil {
-		return fmt.Errorf("failed to flush tar file: %s", err)
+
+		if walkErr != nil {
+			return walkErr
+		}
 	}
 
 	metadataJSON, err := json.Marshal(meta)
@@ -249,41 +262,6 @@ func uploadToS3(dir string, key string) error {
 		return fmt.Errorf("failed to upload to S3: %s", err)
 	}
 	log.Println("Uploaded successfully")
-
-	return nil
-}
-
-func dirwalk(baseDir string, target string, fn func(string, os.FileInfo) error) error {
-	targetInfo, err := os.Stat(target)
-	if err != nil {
-		return fmt.Errorf("failed to stat file: %s", err)
-	}
-
-	if baseDir == "" {
-		if targetInfo.IsDir() {
-			baseDir = target
-		} else {
-			baseDir = filepath.Dir(target)
-		}
-	}
-
-	fileinfos, err := ioutil.ReadDir(target)
-	if err != nil {
-		return fmt.Errorf("failed to open directory: %s", err)
-	}
-
-	for _, fileinfo := range fileinfos {
-		if fileinfo.IsDir() {
-			next := filepath.Join(baseDir, fileinfo.Name())
-			if err := dirwalk(next, next, fn); err != nil {
-				return err
-			}
-		} else {
-			if err := fn(baseDir, fileinfo); err != nil {
-				return err
-			}
-		}
-	}
 
 	return nil
 }
