@@ -92,6 +92,42 @@ type TarHeaderAndContent struct {
 	Content string
 }
 
+func loadTarHeadersAndContents(t *testing.T, f string) map[string]*TarHeaderAndContent {
+	file, err := os.Open(f)
+	if err != nil {
+		t.Fatalf("failed to open the created tar: %s", err)
+	}
+
+	tr := tar.NewReader(file)
+	hdrs := make(map[string]*TarHeaderAndContent)
+
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("failed to read the tar file: %s", err)
+		}
+
+		buf := new(bytes.Buffer)
+
+		if hdr.Typeflag&tar.TypeDir != tar.TypeDir && hdr.Typeflag&tar.TypeSymlink != tar.TypeSymlink {
+			_, rErr := io.Copy(buf, tr)
+			if rErr != nil {
+				t.Fatalf("failed to read a file from the tar file: %s", rErr)
+			}
+		}
+
+		hdrs[hdr.Name] = &TarHeaderAndContent{
+			Header:  hdr,
+			Content: buf.String(),
+		}
+	}
+
+	return hdrs
+}
+
 func TestCreateTar(t *testing.T) {
 	setupFixturesToCache(t)
 
@@ -107,52 +143,23 @@ func TestCreateTar(t *testing.T) {
 		t.Fatalf("failed to create a tar: %s", err)
 	}
 
-	if file, err := os.Open(filepath.Join(dir, "test.tar")); err != nil {
-		t.Fatalf("failed to open the created tar: %s", err)
-	} else {
-		tr := tar.NewReader(file)
-		hdrs := make(map[string]*TarHeaderAndContent)
+	hdrs := loadTarHeadersAndContents(t, filepath.Join(dir, "test.tar"))
 
-		for {
-			hdr, err := tr.Next()
-			if err == io.EOF {
-				break
-			}
-			if err != nil {
-				t.Fatalf("failed to read the tar file: %s", err)
-			}
+	n := len(hdrs)
+	if n != 8 {
+		t.Fatalf("the number of the entries is wrong: %d", n)
+	}
 
-			buf := new(bytes.Buffer)
-
-			if hdr.Typeflag&tar.TypeDir != tar.TypeDir && hdr.Typeflag&tar.TypeSymlink != tar.TypeSymlink {
-				_, rErr := io.Copy(buf, tr)
-				if rErr != nil {
-					t.Fatalf("failed to read a file from the tar file: %s", rErr)
-				}
-			}
-
-			hdrs[hdr.Name] = &TarHeaderAndContent{
-				Header:  hdr,
-				Content: buf.String(),
-			}
-		}
-
-		n := len(hdrs)
-		if n != 8 {
-			t.Fatalf("the number of the entries is wrong: %d", n)
-		}
-
-		if hdrs["metadata.json"].Content != `{"paths":["tmp/foo","tmp/abc/def"]}` {
-			t.Fatalf("the content of metadata.json is wrong: %s", hdrs["metadata.json"].Content)
-		}
-		if hdrs["0000/foo/hoge.txt"].Content != "This is foo!" {
-			t.Fatalf("the content of 0000/foo/hoge.txt is wrong: %s", hdrs["0000/tmp/foo/hoge.txt"].Content)
-		}
-		if hdrs["0000/foo/bar/baz/link"].Header.Linkname != "../../hoge.txt" {
-			t.Fatalf("the target of the link 0000/tmp/foo/bar/baz/link is wrong: %s", hdrs["0000/tmp/foo/bar/baz/link"].Header.Linkname)
-		}
-		if hdrs["0001/def/ghe"].Header.Typeflag&tar.TypeDir != tar.TypeDir {
-			t.Fatalf("the directory 0001/abc/def/ghe is not a directory")
-		}
+	if hdrs["metadata.json"].Content != `{"paths":["tmp/foo","tmp/abc/def"]}` {
+		t.Fatalf("the content of metadata.json is wrong: %s", hdrs["metadata.json"].Content)
+	}
+	if hdrs["0000/foo/hoge.txt"].Content != "This is foo!" {
+		t.Fatalf("the content of 0000/foo/hoge.txt is wrong: %s", hdrs["0000/tmp/foo/hoge.txt"].Content)
+	}
+	if hdrs["0000/foo/bar/baz/link"].Header.Linkname != "../../hoge.txt" {
+		t.Fatalf("the target of the link 0000/tmp/foo/bar/baz/link is wrong: %s", hdrs["0000/tmp/foo/bar/baz/link"].Header.Linkname)
+	}
+	if hdrs["0001/def/ghe"].Header.Typeflag&tar.TypeDir != tar.TypeDir {
+		t.Fatalf("the directory 0001/abc/def/ghe is not a directory")
 	}
 }
