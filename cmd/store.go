@@ -12,6 +12,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -136,7 +137,7 @@ func createTar(dir string, key string, paths []string) error {
 				return fmt.Errorf("failed to create tar Header: %s", thErr)
 			}
 
-			tarHeader.Name = filepath.Join(childDir, elempath)
+			tarHeader.Name = filepath.Join(childDir, strings.TrimPrefix(elempath, filepath.Dir(path)))
 
 			if err := tw.WriteHeader(tarHeader); err != nil {
 				return fmt.Errorf("failed to write tar header: %s", err)
