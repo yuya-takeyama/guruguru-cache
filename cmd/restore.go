@@ -84,7 +84,8 @@ var restoreCmd = &cobra.Command{
 			return
 		}
 
-		extractCache(dir, item)
+		file := saveCacheFileFromS3Item(dir, item)
+		extractCache(dir, file)
 		moveToOriginalPaths(dir)
 	},
 }
@@ -140,7 +141,7 @@ func getPartiallyMatchedItem(cacheKey string) (*s3.GetObjectOutput, string, erro
 	return nil, "", nil
 }
 
-func extractCache(dir string, item *s3.GetObjectOutput) {
+func saveCacheFileFromS3Item(dir string, item *s3.GetObjectOutput) *os.File {
 	defer item.Body.Close()
 
 	file, err := os.Create(filepath.Join(dir, "cache.tar.gz"))
@@ -156,6 +157,10 @@ func extractCache(dir string, item *s3.GetObjectOutput) {
 
 	file.Seek(0, 0)
 
+	return file
+}
+
+func extractCache(dir string, file *os.File) {
 	gzr, err := gzip.NewReader(file)
 	if err != nil {
 		log.Fatalf("failed to open gzip file: %s", err)
@@ -172,22 +177,30 @@ func extractCache(dir string, item *s3.GetObjectOutput) {
 			log.Fatalf("failed to extract tar file: %s", err)
 		}
 
-		target := filepath.Join(dir, hdr.Name)
-		fileDir := filepath.Dir(target)
-		if err := os.MkdirAll(fileDir, 0755); err != nil {
-			log.Fatalf("failed to create a directory: %s", err)
-		}
+		if hdr.Typeflag&tar.TypeDir == tar.TypeDir {
+			dirpath := filepath.Join(dir, hdr.Name)
+			if err := os.MkdirAll(dirpath, os.FileMode(hdr.Mode)); err != nil {
+				log.Fatalf("failed to create a directory: %s: %s", dirpath, err)
+			}
+		} else if hdr.Typeflag&tar.TypeSymlink == tar.TypeSymlink {
+			symlinkpath := filepath.Join(dir, hdr.Name)
+			if err := os.Symlink(hdr.Linkname, symlinkpath); err != nil {
+				log.Fatalf("failed to create a symlink: %s: %s", symlinkpath, err)
+			}
+		} else {
+			target := filepath.Join(dir, hdr.Name)
 
-		f, err := os.OpenFile(target, os.O_CREATE|os.O_RDWR, os.FileMode(hdr.Mode))
-		if err != nil {
-			log.Fatalf("failed to create a file: %s", err)
-		}
+			f, err := os.OpenFile(target, os.O_CREATE|os.O_RDWR, os.FileMode(hdr.Mode))
+			if err != nil {
+				log.Fatalf("failed to create a file: %s", err)
+			}
 
-		if _, err := io.Copy(f, tr); err != nil {
-			log.Fatalf("failed to write to a file: %s", err)
-		}
+			defer f.Close()
 
-		f.Close()
+			if _, err := io.Copy(f, tr); err != nil {
+				log.Fatalf("failed to write to a file: %s", err)
+			}
+		}
 	}
 }
 
