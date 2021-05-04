@@ -1,3 +1,5 @@
+:exclamation: **:Archived:** You should use [buildx cache](https://docs.docker.com/engine/reference/commandline/buildx_build/#cache-from) :exclamation:
+
 # guruguru-cache
 
 CircleCI-like caching utility
